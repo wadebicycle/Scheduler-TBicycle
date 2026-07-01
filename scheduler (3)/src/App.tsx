@@ -593,16 +593,15 @@ export default function App() {
       playNotificationSound(settings.notificationSound);
       const motivators = [t('motivate1'), t('motivate2'), t('motivate3'), t('motivate4'), t('motivate5')];
       const message = motivators[Math.floor(Math.random() * motivators.length)];
-      toast.success(message, { 
+      toast.success(message, {
         icon: <Trophy className="w-4 h-4 text-yellow-500" />,
-        duration: 3000 
+        duration: 3000
       });
       setShowCelebration(true);
     }
+    setPlans((currentPlans) => currentPlans.map(x => x.id === p.id ? p : x));
     if (user) {
       cloudStorage.savePlan(user.uid, p);
-    } else {
-      setPlans(plans.map(x => x.id === p.id ? p : x));
     }
   };
   const totalPlansCount = currentWeekPlans.length;
@@ -804,9 +803,19 @@ export default function App() {
              <ScheduleGrid 
                 currentWeekStart={selectedWeekStart}
                 plans={plans}
-                onAddPlan={p => user ? cloudStorage.savePlan(user.uid, p) : setPlans([...plans, p])}
+                onAddPlan={(p) => {
+                  setPlans((currentPlans) => [...currentPlans, p]);
+                  if (user) {
+                    cloudStorage.savePlan(user.uid, p);
+                  }
+                }}
                 onUpdatePlan={handleUpdatePlan}
-                onDeletePlan={id => user ? cloudStorage.deletePlan(user.uid, id) : setPlans(plans.filter(x => x.id !== id))}
+                onDeletePlan={(id) => {
+                  setPlans((currentPlans) => currentPlans.filter(x => x.id !== id));
+                  if (user) {
+                    cloudStorage.deletePlan(user.uid, id);
+                  }
+                }}
                onPlanTurnGreen={(p) => {
                   // Cat celebrates and meows
                   setCatMoodOverride('celebrating');
