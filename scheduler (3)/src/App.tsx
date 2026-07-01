@@ -10,7 +10,12 @@ import {
   addWeeks, 
   subWeeks, 
   isSameDay,
-  isSameWeek 
+  isSameWeek,
+  endOfMonth,
+  startOfMonth,
+  isWithinInterval,
+  differenceInDays,
+  subMonths
 } from 'date-fns';
 import { Plan, NotificationSound } from './types';
 import { storage } from './lib/storage';
@@ -22,6 +27,7 @@ import { healthTipsManager } from './lib/healthTips';
 import { User } from 'firebase/auth';
 import { ScheduleGrid } from './components/ScheduleGrid';
 import { Toaster } from '@/components/ui/sonner';
+import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { 
   Calendar as CalendarIcon, 
@@ -47,6 +53,7 @@ import {
   Play,
   Pause,
   RotateCcw,
+  Download,
   X,
   Timer,
   Dumbbell,
@@ -278,6 +285,7 @@ export default function App() {
   const [syncing, setSyncing] = React.useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const [hasMonthlyPdfPrompted, setHasMonthlyPdfPrompted] = React.useState(false);
   const [settings, setSettings] = React.useState<AppSettings>(() => storage.getSettings());
 
   React.useEffect(() => {
@@ -465,6 +473,94 @@ export default function App() {
     storage.saveSettings(newSettings, user?.uid);
     if (user) cloudStorage.saveSettings(user.uid, newSettings);
   };
+
+  const formatMonthLabel = (date: Date) => {
+    return new Intl.DateTimeFormat(settings.language, { month: 'long', year: 'numeric' }).format(date);
+  };
+
+  const isEndOfMonthPeriod = React.useMemo(() => {
+    const now = currentTime;
+    return differenceInDays(endOfMonth(now), now) <= 3;
+  }, [currentTime]);
+
+  const getMonthlyPdfTargetDate = () => {
+    return currentTime.getDate() <= 3 ? subMonths(currentTime, 1) : currentTime;
+  };
+
+  const generateMonthlyPdf = React.useCallback(async () => {
+    const targetDate = getMonthlyPdfTargetDate();
+    const monthStart = startOfMonth(targetDate);
+    const monthEnd = endOfMonth(targetDate);
+    const monthLabel = formatMonthLabel(targetDate);
+
+    const monthPlans = plans.filter(plan => {
+      const planDate = new Date(plan.date);
+      return isWithinInterval(planDate, { start: monthStart, end: monthEnd });
+    });
+
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    let y = 50;
+
+    pdf.setFontSize(18);
+    pdf.text(t('monthlyPdfHeader'), pageWidth / 2, y, { align: 'center' });
+    y += 30;
+    pdf.setFontSize(12);
+    pdf.text(`${monthLabel}`, pageWidth / 2, y, { align: 'center' });
+    y += 30;
+
+    if (monthPlans.length === 0) {
+      pdf.text(t('monthlyPdfNoPlans'), 40, y);
+    } else {
+      const weeks = Array.from(new Set(
+        monthPlans.map(plan => format(startOfWeek(new Date(plan.date), { weekStartsOn: 1 }), 'yyyy-MM-dd'))
+      )).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+      let totalTasks = 0;
+      let totalCompleted = 0;
+
+      for (let i = 0; i < weeks.length; i += 1) {
+        const weekStart = new Date(weeks[i]);
+        const weekPlans = monthPlans.filter(plan => isSameWeek(new Date(plan.date), weekStart, { weekStartsOn: 1 }));
+        const completed = weekPlans.filter(plan => plan.color === 'green').length;
+        const total = weekPlans.length;
+        totalTasks += total;
+        totalCompleted += completed;
+
+        pdf.text(
+          t('monthlyPdfWeekLine', {
+            week: format(weekStart, 'w'),
+            completed: String(completed),
+            total: String(total),
+          }),
+          40,
+          y
+        );
+        y += 20;
+      }
+
+      const score = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
+      y += 10;
+      pdf.text(
+        t('monthlyPdfCongratulation', {
+          month: formatMonthLabel(targetDate),
+          score: String(score),
+        }),
+        40,
+        y
+      );
+    }
+
+    pdf.save(`Scheduler-${format(monthStart, 'MMMM-yyyy')}.pdf`);
+    toast.success(t('monthlyPdfSaved', { message: monthLabel }));
+  }, [plans, currentTime, settings.language]);
+
+  React.useEffect(() => {
+    if (!hasMonthlyPdfPrompted && isEndOfMonthPeriod) {
+      toast(t('monthlyPdfPrompt'));
+      setHasMonthlyPdfPrompted(true);
+    }
+  }, [hasMonthlyPdfPrompted, isEndOfMonthPeriod, settings.language]);
 
   const formatSeconds = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -795,6 +891,10 @@ export default function App() {
                 <Button variant="outline" size="sm" className="hidden lg:flex" onClick={() => setIsSummaryOpen(true)}>
                   <Trophy className="w-3.5 h-3.5 mr-2 text-yellow-600" />
                   {t('summaryButton')}
+                </Button>
+                <Button variant="outline" size="sm" className="hidden lg:flex" onClick={generateMonthlyPdf}>
+                  <Download className="w-3.5 h-3.5 mr-2" />
+                  {t('downloadMonthlyPdf')}
                 </Button>
               </div>
            </div>
