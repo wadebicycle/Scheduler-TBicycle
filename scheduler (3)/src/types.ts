@@ -11,6 +11,7 @@ export interface Plan {
   appliedFrom?: string;
   appliedTo?: string;
   applyUntilDate?: string;
+  repeatDaily?: boolean;
   repeatWeekly?: boolean;
   sourcePlanId?: string;
 }
