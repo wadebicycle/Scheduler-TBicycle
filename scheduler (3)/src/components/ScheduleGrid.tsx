@@ -459,8 +459,8 @@ export function ScheduleGrid({
       </table>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:rounded-2xl border-none max-w-sm w-full bg-card max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:rounded-2xl border-none max-w-sm w-full bg-card h-[min(85vh,calc(100vh-2rem))] max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-2">
             <DialogTitle className="text-foreground">
               {plans.some(p => p.id === editingPlan?.id) ? t('editPlan') : t('addPlan')}
             </DialogTitle>
@@ -468,7 +468,7 @@ export function ScheduleGrid({
               {editingPlan && `${editingPlan.startHour}:00 — ${format(new Date(editingOccurrenceDate || editingPlan.date), 'EEE, d/M')}`}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
+          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
               <Label htmlFor="title" className="text-xs font-bold text-muted-foreground sm:text-right">
                 {t('title')}
@@ -583,7 +583,7 @@ export function ScheduleGrid({
               </div>
             )}
           </div>
-          <DialogFooter className="flex justify-between w-full flex-row gap-2">
+          <DialogFooter className="sticky bottom-0 z-20 bg-card/95 backdrop-blur border-t border-border flex justify-between w-full flex-row gap-2 py-4 px-4">
             {plans.some(p => p.id === editingPlan?.id) && (
               <Button variant="destructive" size="sm" onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
                 <Trash2 className="w-4 h-4 md:mr-2" />
@@ -599,6 +599,7 @@ export function ScheduleGrid({
               </Button>
             </div>
           </DialogFooter>
+        </div>
         </DialogContent>
       </Dialog>
     </div>
