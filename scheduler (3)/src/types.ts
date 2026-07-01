@@ -11,6 +11,7 @@ export interface Plan {
   appliedFrom?: string;
   appliedTo?: string;
   repeatWeekly?: boolean;
+  sourcePlanId?: string;
 }
 
 export interface WeekMetadata {

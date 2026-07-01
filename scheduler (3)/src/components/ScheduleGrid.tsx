@@ -71,7 +71,13 @@ export function ScheduleGrid({
   endHour,
 }: ScheduleGridProps) {
 
-  const t = (key: keyof typeof translations.en) => translations[language][key];
+  const t = (key: keyof typeof translations.en, params: Record<string, string> = {}) => {
+    let text = translations[language][key] || key;
+    Object.entries(params).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
   const dayLabels = [t('monday'), t('tuesday'), t('wednesday'), t('thursday'), t('friday'), t('saturday'), t('sunday')];
   const dayShortLabels = [t('mon'), t('tue'), t('wed'), t('thu'), t('fri'), t('sat'), t('sun')];
 
@@ -88,6 +94,7 @@ export function ScheduleGrid({
   const [newNotes, setNewNotes] = React.useState('');
   const [applyMode, setApplyMode] = React.useState<'none' | 'weekly' | 'nextWeek' | 'repeatUntil' | 'futureWeeks'>('none');
   const [applyUntilDate, setApplyUntilDate] = React.useState('');
+  const [editingOccurrenceDate, setEditingOccurrenceDate] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (editingPlan) {
@@ -150,7 +157,15 @@ export function ScheduleGrid({
 
       if ((plan.repeatWeekly || plan.appliedFrom || plan.appliedTo) && isRecurringPlanActiveForWeek(plan, currentWeekStart)) {
         const occurrenceDate = getOccurrenceDateForWeek(planDate, currentWeekStart);
-        return [{ ...plan, date: occurrenceDate.toISOString() }];
+        const explicitDuplicate = plans.some((otherPlan) =>
+          otherPlan.id !== plan.id &&
+          isSameDay(new Date(otherPlan.date), occurrenceDate) &&
+          otherPlan.startHour === plan.startHour
+        );
+        if (explicitDuplicate) {
+          return [];
+        }
+        return [{ ...plan, date: occurrenceDate.toISOString(), sourcePlanId: plan.id }];
       }
 
       return [];
@@ -160,20 +175,22 @@ export function ScheduleGrid({
   const handleUnifiedClick = (date: Date, hour: number) => {
     playMusicalNote();
     const existing = visiblePlans.find(p => isSameDay(new Date(p.date), date) && p.startHour === hour);
+    const actualExisting = existing?.sourcePlanId ? plans.find(p => p.id === existing.sourcePlanId) ?? existing : existing;
 
-    if (!existing || existing.title === '') {
+    if (!actualExisting || actualExisting.title === '') {
       if (clickTimer.current) {
         clearTimeout(clickTimer.current);
         clickTimer.current = null;
         clickCount.current = 0;
       }
       
-      if (existing) {
-        setEditingPlan(existing);
-        setNewTitle(existing.title);
-        setNewColor(existing.color);
-        setNewDuration(existing.duration);
-        setNewNotes(existing.notes || '');
+      if (actualExisting) {
+        setEditingPlan(actualExisting);
+        setEditingOccurrenceDate(existing?.sourcePlanId ? existing.date : null);
+        setNewTitle(actualExisting.title);
+        setNewColor(actualExisting.color);
+        setNewDuration(actualExisting.duration);
+        setNewNotes(actualExisting.notes || '');
       } else {
         setEditingPlan({
           id: crypto.randomUUID(),
@@ -183,6 +200,7 @@ export function ScheduleGrid({
           duration: 1,
           color: 'yellow'
         } as Plan);
+        setEditingOccurrenceDate(null);
         setNewTitle('');
         setNewColor('yellow');
         setNewDuration(1);
@@ -218,11 +236,13 @@ export function ScheduleGrid({
 
   const handleOpenEdit = (plan: Plan, e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditingPlan(plan);
-    setNewTitle(plan.title);
-    setNewColor(plan.color);
-    setNewDuration(plan.duration);
-    setNewNotes(plan.notes || '');
+    const sourcePlan = plan.sourcePlanId ? plans.find(p => p.id === plan.sourcePlanId) ?? plan : plan;
+    setEditingPlan(sourcePlan);
+    setEditingOccurrenceDate(plan.sourcePlanId ? plan.date : null);
+    setNewTitle(sourcePlan.title);
+    setNewColor(sourcePlan.color);
+    setNewDuration(sourcePlan.duration);
+    setNewNotes(sourcePlan.notes || '');
     setIsDialogOpen(true);
   };
 
@@ -444,7 +464,7 @@ export function ScheduleGrid({
               {plans.some(p => p.id === editingPlan?.id) ? t('editPlan') : t('addPlan')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {editingPlan && `${editingPlan.startHour}:00 — ${format(new Date(editingPlan.date), 'EEE, d/M')}`}
+              {editingPlan && `${editingPlan.startHour}:00 — ${format(new Date(editingOccurrenceDate || editingPlan.date), 'EEE, d/M')}`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
