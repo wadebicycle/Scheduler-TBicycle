@@ -396,11 +396,16 @@ export function ScheduleGrid({
               </td>
               {daysOfCurrentWeek.map((day, dayIndex) => {
                   const plan = visiblePlans.find(p => isSameDay(new Date(p.date), day) && p.startHour === hour);
-                  const isPartofPreviousPlan = visiblePlans.some(p => 
+                  const isCoveredBySpan = visiblePlans.some(p => 
                     isSameDay(new Date(p.date), day) &&
                     hour > p.startHour && 
                     hour < p.startHour + p.duration
                   );
+
+                  if (isCoveredBySpan) {
+                    return null;
+                  }
+
                 return (
                   <td 
                     key={dayIndex} 
