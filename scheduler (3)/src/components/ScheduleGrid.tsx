@@ -80,15 +80,21 @@ export function ScheduleGrid({
   const [newColor, setNewColor] = React.useState<PlanColor>('yellow');
   const [newDuration, setNewDuration] = React.useState(1);
   const [newNotes, setNewNotes] = React.useState('');
-  const [applyTargetDate, setApplyTargetDate] = React.useState('');
+  const [applyMode, setApplyMode] = React.useState<'none' | 'weekly' | 'nextWeek'>('none');
 
   React.useEffect(() => {
     if (editingPlan) {
-      setApplyTargetDate(format(new Date(editingPlan.date), 'yyyy-MM-dd'));
+      if (editingPlan.repeatWeekly) {
+        setApplyMode('weekly');
+      } else if (editingPlan.appliedTo) {
+        setApplyMode('nextWeek');
+      } else {
+        setApplyMode('none');
+      }
     } else {
-      setApplyTargetDate(format(new Date(), 'yyyy-MM-dd'));
+      setApplyMode('none');
     }
-  }, [editingPlan?.id, editingPlan?.date]);
+  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatWeekly, editingPlan?.appliedTo]);
 
   const daysOfCurrentWeek = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
@@ -178,41 +184,66 @@ export function ScheduleGrid({
     if (!editingPlan) return;
 
     const sourceDate = new Date(editingPlan.date);
-    const targetDate = new Date(`${applyTargetDate}T12:00:00`);
-    const isApplyingToDifferentDate = !isSameDay(sourceDate, targetDate);
+    const nextWeekDate = addDays(sourceDate, 7);
     const updatedSourcePlan = buildUpdatedPlan(editingPlan);
     const wasGreen = plans.find(p => p.id === editingPlan.id)?.color === 'green';
     const isNew = !plans.some(p => p.id === updatedSourcePlan.id);
 
     try {
-      if (isApplyingToDifferentDate) {
-        const targetPlan = plans.find((p) => isSameDay(new Date(p.date), targetDate) && p.startHour === editingPlan.startHour);
-        const updatedTargetPlan = {
-          ...buildUpdatedPlan(editingPlan),
-          id: targetPlan?.id || crypto.randomUUID(),
-          date: targetDate.toISOString(),
+      if (applyMode === 'weekly') {
+        const weeklyPlan = {
+          ...updatedSourcePlan,
+          repeatWeekly: true,
           appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
-          appliedTo: targetDate.toISOString(),
+          appliedTo: undefined,
+        } as Plan;
+
+        if (isNew) {
+          await onAddPlan(weeklyPlan);
+        } else {
+          await onUpdatePlan(weeklyPlan);
+        }
+      } else if (applyMode === 'nextWeek') {
+        const nextWeekPlan = plans.find((p) => isSameDay(new Date(p.date), nextWeekDate) && p.startHour === editingPlan.startHour);
+        const targetPlan = {
+          ...buildUpdatedPlan(editingPlan),
+          id: nextWeekPlan?.id || crypto.randomUUID(),
+          date: nextWeekDate.toISOString(),
+          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
+          appliedTo: nextWeekDate.toISOString(),
+          repeatWeekly: false,
         } as Plan;
 
         const updatedOriginalPlan = {
           ...updatedSourcePlan,
           appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
-          appliedTo: targetDate.toISOString(),
+          appliedTo: nextWeekDate.toISOString(),
+          repeatWeekly: false,
         } as Plan;
 
-        await onUpdatePlan(updatedOriginalPlan);
-
-        if (targetPlan) {
-          await onUpdatePlan(updatedTargetPlan);
+        if (isNew) {
+          await onAddPlan(updatedOriginalPlan);
         } else {
-          await onAddPlan(updatedTargetPlan);
+          await onUpdatePlan(updatedOriginalPlan);
+        }
+
+        if (nextWeekPlan) {
+          await onUpdatePlan(targetPlan);
+        } else {
+          await onAddPlan(targetPlan);
         }
       } else {
+        const plainPlan = {
+          ...updatedSourcePlan,
+          appliedFrom: undefined,
+          appliedTo: undefined,
+          repeatWeekly: false,
+        } as Plan;
+
         if (isNew) {
-          await onAddPlan(updatedSourcePlan);
+          await onAddPlan(plainPlan);
         } else {
-          await onUpdatePlan(updatedSourcePlan);
+          await onUpdatePlan(plainPlan);
         }
       }
 
@@ -233,42 +264,6 @@ export function ScheduleGrid({
       onDeletePlan(editingPlan.id);
       setIsDialogOpen(false);
     }
-  };
-
-  const handleApplyToDate = () => {
-    if (!editingPlan || !applyTargetDate) return;
-
-    const sourceDate = new Date(editingPlan.date);
-    const targetDate = new Date(`${applyTargetDate}T12:00:00`);
-    if (isSameDay(targetDate, sourceDate)) {
-      toast.info(t('sameDateSelected'));
-      return;
-    }
-
-    const targetPlan = plans.find((p) => isSameDay(new Date(p.date), targetDate) && p.startHour === editingPlan.startHour);
-    const payload = {
-      ...editingPlan,
-      id: targetPlan?.id || crypto.randomUUID(),
-      title: newTitle,
-      color: newColor,
-      duration: newDuration,
-      notes: newNotes || undefined,
-      date: targetDate.toISOString(),
-      startHour: editingPlan.startHour,
-      appliedFrom: editingPlan.appliedFrom || editingPlan.date,
-      appliedTo: targetDate.toISOString(),
-    } as Plan;
-
-    const originalPlan = { ...editingPlan, appliedTo: targetDate.toISOString() };
-    onUpdatePlan(originalPlan);
-
-    if (targetPlan) {
-      onUpdatePlan(payload);
-    } else {
-      onAddPlan(payload);
-    }
-
-    toast.success(`${t('appliedToDate')} ${format(targetDate, 'dd/MM/yyyy')}`);
   };
 
   const maxDuration = (hour: number) => Math.min(12, endHour - hour + 1);
@@ -444,20 +439,31 @@ export function ScheduleGrid({
                 className="col-span-3 text-xs resize-none bg-muted/50 border-border placeholder:text-muted-foreground"
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-3">
+            <div className="grid grid-cols-4 items-start gap-3">
               <Label className="text-right text-xs font-bold text-muted-foreground">
-                {t('applyToDate')}
+                {t('applyMode')}
               </Label>
-              <div className="col-span-3 flex flex-col gap-2">
-                <input
-                  type="date"
-                  value={applyTargetDate}
-                  onChange={(e) => setApplyTargetDate(e.target.value)}
-                  className="w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm"
-                />
-                <Button type="button" variant="outline" size="sm" onClick={handleApplyToDate} className="w-full justify-center">
-                  {t('applyToDateButton')}
-                </Button>
+              <div className="col-span-3 space-y-2">
+                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="weekly"
+                    checked={applyMode === 'weekly'}
+                    onChange={() => setApplyMode('weekly')}
+                  />
+                  <span className="text-xs">{t('applyWeekly')}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="nextWeek"
+                    checked={applyMode === 'nextWeek'}
+                    onChange={() => setApplyMode('nextWeek')}
+                  />
+                  <span className="text-xs">{t('applyNextWeek')}</span>
+                </label>
               </div>
             </div>
           </div>

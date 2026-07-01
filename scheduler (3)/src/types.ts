@@ -10,6 +10,7 @@ export interface Plan {
   notes?: string;
   appliedFrom?: string;
   appliedTo?: string;
+  repeatWeekly?: boolean;
 }
 
 export interface WeekMetadata {
