@@ -538,7 +538,7 @@ export function ScheduleGrid({
                 onChange={(e) => setNewNotes(e.target.value)}
                 placeholder={t('notesPlaceholder')}
                 rows={2}
-                className="sm:col-span-3 text-xs resize-none max-h-40 overflow-y-auto bg-muted/50 border-border placeholder:text-muted-foreground"
+                className="sm:col-span-3 text-xs resize-none max-h-40 overflow-y-scroll bg-muted/50 border-border placeholder:text-muted-foreground"
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
