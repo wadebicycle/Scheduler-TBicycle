@@ -8,6 +8,7 @@ import {
   format, 
   startOfWeek, 
   addWeeks, 
+  addDays,
   subWeeks, 
   isSameDay,
   isSameWeek,
@@ -27,6 +28,7 @@ import { healthTipsManager } from './lib/healthTips';
 import { User } from 'firebase/auth';
 import { ScheduleGrid } from './components/ScheduleGrid';
 import { Toaster } from '@/components/ui/sonner';
+import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { 
@@ -478,6 +480,19 @@ export default function App() {
     return new Intl.DateTimeFormat(settings.language, { month: 'long', year: 'numeric' }).format(date);
   };
 
+  const formatDayLabel = (date: Date) => {
+    return new Intl.DateTimeFormat(settings.language, { weekday: 'short' }).format(date);
+  };
+
+  const formatFullDateLabel = (date: Date) => {
+    return new Intl.DateTimeFormat(settings.language, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(date);
+  };
+
   const isEndOfMonthPeriod = React.useMemo(() => {
     const now = currentTime;
     return differenceInDays(endOfMonth(now), now) <= 3;
@@ -487,73 +502,159 @@ export default function App() {
     return currentTime.getDate() <= 3 ? subMonths(currentTime, 1) : currentTime;
   };
 
-  const generateMonthlyPdf = React.useCallback(async () => {
-    const targetDate = getMonthlyPdfTargetDate();
+  const createPdfFromPages = React.useCallback(async (
+    pages: Array<{ title: string; subtitle?: string; lines: string[] }>,
+    filename: string
+  ) => {
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const canvas = document.createElement('canvas');
+    const scale = 2;
+    canvas.width = pageWidth * scale;
+    canvas.height = pageHeight * scale;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      toast.error(t('pdfGenerationError'));
+      return;
+    }
+
+    const drawWrappedText = (text: string, x: number, y: number, maxWidth: number, lineHeight: number) => {
+      const words = text.split(' ');
+      let current = '';
+      let offsetY = y;
+
+      for (const word of words) {
+        const testLine = current ? `${current} ${word}` : word;
+        const width = ctx.measureText(testLine).width;
+
+        if (width <= maxWidth || current === '') {
+          current = testLine;
+        } else {
+          ctx.fillText(current, x, offsetY);
+          offsetY += lineHeight;
+          current = word;
+        }
+      }
+
+      if (current) {
+        ctx.fillText(current, x, offsetY);
+        offsetY += lineHeight;
+      }
+
+      return offsetY;
+    };
+
+    pages.forEach((page, pageIndex) => {
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, pageWidth, pageHeight);
+
+      ctx.fillStyle = '#000000';
+      ctx.textBaseline = 'top';
+      ctx.font = `bold 18px "Noto Sans", "Times New Roman", serif`;
+      const titleWidth = ctx.measureText(page.title).width;
+      ctx.fillText(page.title, (pageWidth - titleWidth) / 2, 40);
+
+      let y = 74;
+      if (page.subtitle) {
+        ctx.font = `normal 12px "Noto Sans", "Times New Roman", serif`;
+        const subtitleWidth = ctx.measureText(page.subtitle).width;
+        ctx.fillText(page.subtitle, (pageWidth - subtitleWidth) / 2, y);
+        y += 28;
+      }
+
+      ctx.font = `normal 12px "Noto Sans", "Times New Roman", serif`;
+      const textX = 40;
+      const textMaxWidth = pageWidth - 80;
+      const lineHeight = 18;
+
+      page.lines.forEach(line => {
+        y = drawWrappedText(line, textX, y, textMaxWidth, lineHeight);
+        y += 10;
+      });
+
+      const imageData = canvas.toDataURL('image/png');
+      if (pageIndex > 0) pdf.addPage();
+      pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight);
+    });
+
+    pdf.save(filename);
+  }, [t]);
+
+  const scheduleGridRef = React.useRef<HTMLDivElement | null>(null);
+
+  const captureWeeklyScheduleImage = React.useCallback(async () => {
+    if (!scheduleGridRef.current) {
+      toast.error(t('pdfGenerationError'));
+      return;
+    }
+
+    const element = scheduleGridRef.current;
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    const image = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `Scheduler-week-${format(selectedWeekStart, 'yyyy-ww')}.png`;
+    link.click();
+  }, [selectedWeekStart, t]);
+
+  const generateMonthlyPdf = React.useCallback(async (monthDate: Date) => {
+    const targetDate = monthDate;
     const monthStart = startOfMonth(targetDate);
-    const monthEnd = endOfMonth(targetDate);
     const monthLabel = formatMonthLabel(targetDate);
 
     const monthPlans = plans.filter(plan => {
       const planDate = new Date(plan.date);
-      return isWithinInterval(planDate, { start: monthStart, end: monthEnd });
+      return isWithinInterval(planDate, { start: monthStart, end: endOfMonth(targetDate) });
     });
 
-    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    let y = 50;
+    const title = t('monthlyPdfHeader');
+    const pages = Array.from({ length: 4 }, (_, index) => {
+      const weekStart = addWeeks(startOfWeek(monthStart, { weekStartsOn: 1 }), index);
+      const weekPlans = monthPlans
+        .filter(plan => isSameWeek(new Date(plan.date), weekStart, { weekStartsOn: 1 }))
+        .sort((a, b) => {
+          if (a.date === b.date) return a.startHour - b.startHour;
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        });
 
-    pdf.setFontSize(18);
-    pdf.text(t('monthlyPdfHeader'), pageWidth / 2, y, { align: 'center' });
-    y += 30;
-    pdf.setFontSize(12);
-    pdf.text(`${monthLabel}`, pageWidth / 2, y, { align: 'center' });
-    y += 30;
+      const weekEnd = addDays(weekStart, 6);
+      const subtitle = `${monthLabel} • ${t('week')} ${format(weekStart, 'w')} (${format(weekStart, 'dd MMM')} - ${format(weekEnd, 'dd MMM')})`;
+      const lines: string[] = [];
 
-    if (monthPlans.length === 0) {
-      pdf.text(t('monthlyPdfNoPlans'), 40, y);
-    } else {
-      const weeks = Array.from(new Set(
-        monthPlans.map(plan => format(startOfWeek(new Date(plan.date), { weekStartsOn: 1 }), 'yyyy-MM-dd'))
-      )).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+      const daysOfWeek = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+      daysOfWeek.forEach(dayDate => {
+        const dayPlans = weekPlans.filter(plan => format(new Date(plan.date), 'yyyy-MM-dd') === format(dayDate, 'yyyy-MM-dd'));
+        lines.push(formatFullDateLabel(dayDate));
+        if (dayPlans.length === 0) {
+          lines.push(`  ${t('weeklyPdfNoPlans')}`);
+        } else {
+          dayPlans.forEach(plan => {
+            const planTitle = plan.title || t('enterTask');
+            const durationLabel = `${t('duration')}: ${plan.duration}h`;
+            lines.push(`  ${plan.startHour}:00 - ${planTitle} (${durationLabel})`);
+            if (plan.notes) {
+              lines.push(`    ${t('notes')}: ${plan.notes}`);
+            }
+          });
+        }
+        lines.push('');
+      });
 
-      let totalTasks = 0;
-      let totalCompleted = 0;
+      return { title, subtitle, lines };
+    });
 
-      for (let i = 0; i < weeks.length; i += 1) {
-        const weekStart = new Date(weeks[i]);
-        const weekPlans = monthPlans.filter(plan => isSameWeek(new Date(plan.date), weekStart, { weekStartsOn: 1 }));
-        const completed = weekPlans.filter(plan => plan.color === 'green').length;
-        const total = weekPlans.length;
-        totalTasks += total;
-        totalCompleted += completed;
-
-        pdf.text(
-          t('monthlyPdfWeekLine', {
-            week: format(weekStart, 'w'),
-            completed: String(completed),
-            total: String(total),
-          }),
-          40,
-          y
-        );
-        y += 20;
-      }
-
-      const score = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
-      y += 10;
-      pdf.text(
-        t('monthlyPdfCongratulation', {
-          month: formatMonthLabel(targetDate),
-          score: String(score),
-        }),
-        40,
-        y
-      );
-    }
-
-    pdf.save(`Scheduler-${format(monthStart, 'MMMM-yyyy')}.pdf`);
+    await createPdfFromPages(pages, `Scheduler-${format(monthStart, 'MMMM-yyyy')}.pdf`);
     toast.success(t('monthlyPdfSaved', { message: monthLabel }));
-  }, [plans, currentTime, settings.language]);
+  }, [plans, settings.language, createPdfFromPages]);
 
   React.useEffect(() => {
     if (!hasMonthlyPdfPrompted && isEndOfMonthPeriod) {
@@ -892,60 +993,71 @@ export default function App() {
                   <Trophy className="w-3.5 h-3.5 mr-2 text-yellow-600" />
                   {t('summaryButton')}
                 </Button>
-                <Button variant="outline" size="sm" className="hidden lg:flex" onClick={generateMonthlyPdf}>
-                  <Download className="w-3.5 h-3.5 mr-2" />
-                  {t('downloadMonthlyPdf')}
-                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9">
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-44 p-2 rounded-2xl shadow-2xl border bg-popover">
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={captureWeeklyScheduleImage}>
+                      {t('downloadWeeklyImage')}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => generateMonthlyPdf(selectedWeekStart)}>
+                      {t('downloadMonthlyPdf')}
+                    </Button>
+                  </PopoverContent>
+                </Popover>
               </div>
            </div>
 
-           <div className="bg-card dark:border-white/10 rounded-xl border shadow-xl overflow-hidden">
-             <ScheduleGrid 
-                currentWeekStart={selectedWeekStart}
-                plans={plans}
-                onAddPlan={(p) => {
-                  setPlans((currentPlans) => [...currentPlans, p]);
-                  if (user) {
-                    cloudStorage.savePlan(user.uid, p);
-                  }
-                }}
-                onUpdatePlan={handleUpdatePlan}
-                onDeletePlan={(id) => {
-                  setPlans((currentPlans) => currentPlans.filter(x => x.id !== id));
-                  if (user) {
-                    cloudStorage.deletePlan(user.uid, id);
-                  }
-                }}
-               onPlanTurnGreen={(p) => {
-                  // Cat celebrates and meows
-                  setCatMoodOverride('celebrating');
-                  playMeow();
-                  setShowCelebration(true);
-                  setTimeout(() => setCatMoodOverride(null), 3000);
-               }}
-                language={settings.language}
-                theme={settings.theme}
-                startHour={settings.startHour}
-                endHour={settings.endHour}
-             />
-             <div className="p-4 border-t bg-muted/30">
-               <Label className="text-[10px] font-bold uppercase mb-2 block opacity-50">{t('weekNote')}</Label>
-               <WeekNoteEditor 
-                  weekStart={selectedWeekStart}
-                  initialNote={weekMetas[format(selectedWeekStart, 'yyyy-MM-dd')]?.note || ''}
-                  theme={settings.theme}
-                  placeholder={t('weekNotePlaceholder')}
-                  btnSaveText={t('saveNote')}
-                  btnSavedText={t('saved')}
-                  onSave={(note) => {
-                    const key = format(selectedWeekStart, 'yyyy-MM-dd');
-                    const updated = { ...weekMetas, [key]: { ...weekMetas[key], note } };
-                    setWeekMetas(updated);
-                    storage.saveWeekMeta(key, { note }, user?.uid);
-                    if (user) cloudStorage.saveWeekMeta(user.uid, key, { note });
+           <div ref={scheduleGridRef} className="bg-card dark:border-white/10 rounded-xl border shadow-xl overflow-hidden">
+               <ScheduleGrid 
+                  currentWeekStart={selectedWeekStart}
+                  plans={plans}
+                  onAddPlan={(p) => {
+                    setPlans((currentPlans) => [...currentPlans, p]);
+                    if (user) {
+                      cloudStorage.savePlan(user.uid, p);
+                    }
                   }}
+                  onUpdatePlan={handleUpdatePlan}
+                  onDeletePlan={(id) => {
+                    setPlans((currentPlans) => currentPlans.filter(x => x.id !== id));
+                    if (user) {
+                      cloudStorage.deletePlan(user.uid, id);
+                    }
+                  }}
+                 onPlanTurnGreen={(p) => {
+                    // Cat celebrates and meows
+                    setCatMoodOverride('celebrating');
+                    playMeow();
+                    setShowCelebration(true);
+                    setTimeout(() => setCatMoodOverride(null), 3000);
+                 }}
+                  language={settings.language}
+                  theme={settings.theme}
+                  startHour={settings.startHour}
+                  endHour={settings.endHour}
                />
-             </div>
+               <div className="p-4 border-t bg-muted/30">
+                 <Label className="text-[10px] font-bold uppercase mb-2 block opacity-50">{t('weekNote')}</Label>
+                 <WeekNoteEditor 
+                    weekStart={selectedWeekStart}
+                    initialNote={weekMetas[format(selectedWeekStart, 'yyyy-MM-dd')]?.note || ''}
+                    theme={settings.theme}
+                    placeholder={t('weekNotePlaceholder')}
+                    btnSaveText={t('saveNote')}
+                    btnSavedText={t('saved')}
+                    onSave={(note) => {
+                      const key = format(selectedWeekStart, 'yyyy-MM-dd');
+                      const updated = { ...weekMetas, [key]: { ...weekMetas[key], note } };
+                      setWeekMetas(updated);
+                      storage.saveWeekMeta(key, { note }, user?.uid);
+                      if (user) cloudStorage.saveWeekMeta(user.uid, key, { note });
+                    }}
+                 />
+               </div>
            </div>
 
            <div className="mt-8 flex justify-between items-center bg-[#107C41] text-white p-6 rounded-xl">
