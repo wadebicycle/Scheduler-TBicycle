@@ -468,7 +468,7 @@ export function ScheduleGrid({
               {editingPlan && `${editingPlan.startHour}:00 — ${format(new Date(editingOccurrenceDate || editingPlan.date), 'EEE, d/M')}`}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
               <Label htmlFor="title" className="text-xs font-bold text-muted-foreground sm:text-right">
                 {t('title')}
