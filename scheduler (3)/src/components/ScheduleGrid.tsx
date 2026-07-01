@@ -459,7 +459,7 @@ export function ScheduleGrid({
       </table>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:rounded-2xl border-none max-w-sm w-full bg-card h-[min(85vh,calc(100vh-2rem))] max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:rounded-2xl border-none max-w-sm w-full bg-card max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-2">
             <DialogTitle className="text-foreground">
               {plans.some(p => p.id === editingPlan?.id) ? t('editPlan') : t('addPlan')}
