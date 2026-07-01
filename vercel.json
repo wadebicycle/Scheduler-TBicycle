@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd 'scheduler (3)' && npm install && npm run build",
+  "outputDirectory": "scheduler (3)/dist",
+  "framework": "vite"
+}
