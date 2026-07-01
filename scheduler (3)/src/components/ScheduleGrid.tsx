@@ -533,13 +533,14 @@ export function ScheduleGrid({
               <Label className="text-xs font-bold pt-2 text-muted-foreground sm:text-right">
                 {t('notes')}
               </Label>
-              <Textarea
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                placeholder={t('notesPlaceholder')}
-                rows={2}
-                className="sm:col-span-3 text-xs resize-none max-h-40 overflow-y-scroll notes-scrollbar bg-muted/50 border-border placeholder:text-muted-foreground"
-              />
+              <div className="sm:col-span-3 h-40 border border-border rounded-md bg-muted/50 overflow-hidden">
+                <Textarea
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                  placeholder={t('notesPlaceholder')}
+                  className="w-full h-full text-xs resize-none overflow-y-auto notes-scrollbar bg-muted/50 border-none placeholder:text-muted-foreground"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
               <Label className="text-xs font-bold text-muted-foreground sm:text-right">
