@@ -166,26 +166,62 @@ export function ScheduleGrid({
     setIsDialogOpen(true);
   };
 
+  const buildUpdatedPlan = (plan: Plan) => ({
+    ...plan,
+    title: newTitle,
+    color: newColor,
+    duration: newDuration,
+    notes: newNotes || undefined,
+  });
+
   const handleSave = async () => {
     if (!editingPlan) return;
-    
-    const planToSave = { ...editingPlan, title: newTitle, color: newColor, duration: newDuration, notes: newNotes || undefined };
+
+    const sourceDate = new Date(editingPlan.date);
+    const targetDate = new Date(`${applyTargetDate}T12:00:00`);
+    const isApplyingToDifferentDate = !isSameDay(sourceDate, targetDate);
+    const updatedSourcePlan = buildUpdatedPlan(editingPlan);
     const wasGreen = plans.find(p => p.id === editingPlan.id)?.color === 'green';
-    const isNew = !plans.some(p => p.id === planToSave.id);
-    
+    const isNew = !plans.some(p => p.id === updatedSourcePlan.id);
+
     try {
-      if (isNew) {
-        await onAddPlan(planToSave);
+      if (isApplyingToDifferentDate) {
+        const targetPlan = plans.find((p) => isSameDay(new Date(p.date), targetDate) && p.startHour === editingPlan.startHour);
+        const updatedTargetPlan = {
+          ...buildUpdatedPlan(editingPlan),
+          id: targetPlan?.id || crypto.randomUUID(),
+          date: targetDate.toISOString(),
+          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
+          appliedTo: targetDate.toISOString(),
+        } as Plan;
+
+        const updatedOriginalPlan = {
+          ...updatedSourcePlan,
+          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
+          appliedTo: targetDate.toISOString(),
+        } as Plan;
+
+        await onUpdatePlan(updatedOriginalPlan);
+
+        if (targetPlan) {
+          await onUpdatePlan(updatedTargetPlan);
+        } else {
+          await onAddPlan(updatedTargetPlan);
+        }
       } else {
-        await onUpdatePlan(planToSave);
+        if (isNew) {
+          await onAddPlan(updatedSourcePlan);
+        } else {
+          await onUpdatePlan(updatedSourcePlan);
+        }
       }
-      
+
       if (!isNew && !wasGreen && newColor === 'green') {
-        onPlanTurnGreen?.(planToSave);
+        onPlanTurnGreen?.(updatedSourcePlan);
       } else if (isNew && newColor === 'green') {
-        onPlanTurnGreen?.(planToSave);
+        onPlanTurnGreen?.(updatedSourcePlan);
       }
-      
+
       setIsDialogOpen(false);
     } catch (e) {
       console.error('Error saving plan:', e);
