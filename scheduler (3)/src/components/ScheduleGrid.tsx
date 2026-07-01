@@ -2,7 +2,13 @@ import * as React from 'react';
 import { 
   format, 
   addDays, 
-  isSameDay 
+  addWeeks,
+  getDay,
+  isSameDay,
+  isSameWeek,
+  startOfWeek,
+  isAfter,
+  isBefore
 } from 'date-fns';
 import { Plan, PlanColor, Language, Theme } from '../types';
 import { cn } from '@/lib/utils';
@@ -80,19 +86,29 @@ export function ScheduleGrid({
   const [newColor, setNewColor] = React.useState<PlanColor>('yellow');
   const [newDuration, setNewDuration] = React.useState(1);
   const [newNotes, setNewNotes] = React.useState('');
-  const [applyMode, setApplyMode] = React.useState<'none' | 'weekly' | 'nextWeek'>('none');
+  const [applyMode, setApplyMode] = React.useState<'none' | 'weekly' | 'nextWeek' | 'repeatUntil' | 'futureWeeks'>('none');
+  const [applyUntilDate, setApplyUntilDate] = React.useState('');
 
   React.useEffect(() => {
     if (editingPlan) {
+      const sourceDate = new Date(editingPlan.date);
+      const nextWeekDate = addDays(sourceDate, 7);
+      const defaultUntil = format(nextWeekDate, 'yyyy-MM-dd');
+
       if (editingPlan.repeatWeekly) {
         setApplyMode('weekly');
       } else if (editingPlan.appliedTo) {
-        setApplyMode('nextWeek');
+        const appliedToDate = new Date(editingPlan.appliedTo);
+        setApplyUntilDate(format(appliedToDate, 'yyyy-MM-dd'));
+        const isNextWeek = isSameDay(appliedToDate, nextWeekDate);
+        setApplyMode(isNextWeek ? 'nextWeek' : 'repeatUntil');
       } else {
         setApplyMode('none');
+        setApplyUntilDate(defaultUntil);
       }
     } else {
       setApplyMode('none');
+      setApplyUntilDate('');
     }
   }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatWeekly, editingPlan?.appliedTo]);
 
@@ -103,9 +119,47 @@ export function ScheduleGrid({
   const clickCount = React.useRef(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
 
+  const getWeekdayIndex = (date: Date) => ((getDay(date) + 6) % 7);
+  const getOccurrenceDateForWeek = (planDate: Date, weekStart: Date) => addDays(weekStart, getWeekdayIndex(planDate));
+
+  const isRecurringPlanActiveForWeek = (plan: Plan, weekStart: Date) => {
+    const planDate = new Date(plan.date);
+    const occurrenceDate = getOccurrenceDateForWeek(planDate, weekStart);
+    const from = plan.appliedFrom ? new Date(plan.appliedFrom) : planDate;
+    const to = plan.appliedTo ? new Date(plan.appliedTo) : null;
+
+    if (isAfter(from, occurrenceDate)) {
+      return false;
+    }
+    if (to && isAfter(occurrenceDate, to)) {
+      return false;
+    }
+    if (isBefore(occurrenceDate, planDate) && !plan.repeatWeekly) {
+      return false;
+    }
+    return true;
+  };
+
+  const visiblePlans = React.useMemo(() => {
+    return plans.flatMap((plan) => {
+      const planDate = new Date(plan.date);
+
+      if (isSameWeek(planDate, currentWeekStart, { weekStartsOn: 1 })) {
+        return [plan];
+      }
+
+      if ((plan.repeatWeekly || plan.appliedFrom || plan.appliedTo) && isRecurringPlanActiveForWeek(plan, currentWeekStart)) {
+        const occurrenceDate = getOccurrenceDateForWeek(planDate, currentWeekStart);
+        return [{ ...plan, date: occurrenceDate.toISOString() }];
+      }
+
+      return [];
+    });
+  }, [plans, currentWeekStart]);
+
   const handleUnifiedClick = (date: Date, hour: number) => {
     playMusicalNote();
-    const existing = plans.find(p => isSameDay(new Date(p.date), date) && p.startHour === hour);
+    const existing = visiblePlans.find(p => isSameDay(new Date(p.date), date) && p.startHour === hour);
 
     if (!existing || existing.title === '') {
       if (clickTimer.current) {
@@ -203,6 +257,36 @@ export function ScheduleGrid({
         } else {
           await onUpdatePlan(weeklyPlan);
         }
+      } else if (applyMode === 'futureWeeks') {
+        const weeklyPlan = {
+          ...updatedSourcePlan,
+          repeatWeekly: true,
+          appliedFrom: nextWeekDate.toISOString(),
+          appliedTo: undefined,
+        } as Plan;
+
+        if (isNew) {
+          await onAddPlan(weeklyPlan);
+        } else {
+          await onUpdatePlan(weeklyPlan);
+        }
+      } else if (applyMode === 'repeatUntil') {
+        const targetDate = applyUntilDate ? new Date(applyUntilDate) : nextWeekDate;
+        const targetWeekStart = startOfWeek(targetDate, { weekStartsOn: 1 });
+        const endDate = addDays(targetWeekStart, getWeekdayIndex(sourceDate));
+
+        const repeatUntilPlan = {
+          ...updatedSourcePlan,
+          repeatWeekly: false,
+          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
+          appliedTo: endDate.toISOString(),
+        } as Plan;
+
+        if (isNew) {
+          await onAddPlan(repeatUntilPlan);
+        } else {
+          await onUpdatePlan(repeatUntilPlan);
+        }
       } else if (applyMode === 'nextWeek') {
         const nextWeekPlan = plans.find((p) => isSameDay(new Date(p.date), nextWeekDate) && p.startHour === editingPlan.startHour);
         const targetPlan = {
@@ -295,15 +379,12 @@ export function ScheduleGrid({
                 {hour}:00
               </td>
               {daysOfCurrentWeek.map((day, dayIndex) => {
-                const plan = plans.find(p => isSameDay(new Date(p.date), day) && p.startHour === hour);
-                const isPartofPreviousPlan = plans.some(p => 
-                  isSameDay(new Date(p.date), day) && 
-                  hour > p.startHour && 
-                  hour < p.startHour + p.duration
-                );
-
-                if (isPartofPreviousPlan) return null;
-
+                  const plan = visiblePlans.find(p => isSameDay(new Date(p.date), day) && p.startHour === hour);
+                  const isPartofPreviousPlan = visiblePlans.some(p => 
+                    isSameDay(new Date(p.date), day) &&
+                    hour > p.startHour && 
+                    hour < p.startHour + p.duration
+                  );
                 return (
                   <td 
                     key={dayIndex} 
@@ -464,8 +545,41 @@ export function ScheduleGrid({
                   />
                   <span className="text-xs">{t('applyNextWeek')}</span>
                 </label>
+                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="repeatUntil"
+                    checked={applyMode === 'repeatUntil'}
+                    onChange={() => setApplyMode('repeatUntil')}
+                  />
+                  <span className="text-xs">{t('applyUntilWeek')}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="futureWeeks"
+                    checked={applyMode === 'futureWeeks'}
+                    onChange={() => setApplyMode('futureWeeks')}
+                  />
+                  <span className="text-xs">{t('applyFutureWeeks')}</span>
+                </label>
               </div>
             </div>
+            {applyMode === 'repeatUntil' && (
+              <div className="grid grid-cols-4 items-center gap-3">
+                <Label className="text-right text-xs font-bold text-muted-foreground">
+                  {t('applyUntil')}
+                </Label>
+                <Input
+                  type="date"
+                  value={applyUntilDate}
+                  onChange={(e) => setApplyUntilDate(e.target.value)}
+                  className="col-span-3 bg-muted/50 border-border"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter className="flex justify-between w-full flex-row gap-2">
             {plans.some(p => p.id === editingPlan?.id) && (
