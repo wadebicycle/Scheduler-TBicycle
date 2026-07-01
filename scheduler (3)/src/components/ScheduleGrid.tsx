@@ -599,7 +599,6 @@ export function ScheduleGrid({
               </Button>
             </div>
           </DialogFooter>
-        </div>
         </DialogContent>
       </Dialog>
     </div>
