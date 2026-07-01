@@ -222,6 +222,9 @@ export function ScheduleGrid({
     const existing = visiblePlans.find(p => isSameDay(new Date(p.date), date) && p.startHour === hour);
     const actualExisting = existing?.sourcePlanId ? plans.find(p => p.id === existing.sourcePlanId) ?? existing : existing;
 
+    // If clicking on an occurrence of recurring plan, always open dialog to prevent accidental series updates
+    const isOccurrence = existing?.sourcePlanId !== undefined && existing?.sourcePlanId !== null;
+
     if (!actualExisting || actualExisting.title === '') {
       if (clickTimer.current) {
         clearTimeout(clickTimer.current);
@@ -251,6 +254,21 @@ export function ScheduleGrid({
         setNewDuration(1);
         setNewNotes('');
       }
+      setIsDialogOpen(true);
+      return;
+    }
+
+    // For occurrences of recurring plans, always open dialog instead of quick-update
+    if (isOccurrence) {
+      const sourcePlan = actualExisting;
+      setEditingPlan(sourcePlan);
+      setEditingOccurrenceDate(existing.date);
+      setNewTitle(sourcePlan.title);
+      setNewColor(sourcePlan.color);
+      setNewDuration(sourcePlan.duration);
+      setNewNotes(sourcePlan.notes || '');
+      setApplyMode('none');
+      setApplyUntilDate('');
       setIsDialogOpen(true);
       return;
     }
@@ -310,24 +328,23 @@ export function ScheduleGrid({
     const isEditingOccurrence = editingOccurrenceDate !== null;
 
     try {
-      // If editing an occurrence of a recurring plan, preserve recurrence properties
-      if (isEditingOccurrence && editingPlan.repeatDaily || editingPlan.repeatWeekly) {
-        // Update the source plan, keeping recurrence intact
-        const preservedPlan = {
+      // If editing an occurrence without changing apply mode, create separate plan for that date
+      if (isEditingOccurrence && applyMode === 'none' && (editingPlan.repeatDaily || editingPlan.repeatWeekly)) {
+        // Create a standalone plan for this specific date
+        const occurrencePlan = {
           ...updatedSourcePlan,
-          repeatDaily: editingPlan.repeatDaily,
-          repeatWeekly: editingPlan.repeatWeekly,
-          appliedFrom: editingPlan.appliedFrom,
-          appliedTo: editingPlan.appliedTo,
-          applyUntilDate: editingPlan.applyUntilDate,
+          id: crypto.randomUUID(), // New unique ID for this date-specific plan
+          date: editingOccurrenceDate,
+          repeatDaily: false,
+          repeatWeekly: false,
+          appliedFrom: undefined,
+          appliedTo: undefined,
+          applyUntilDate: undefined,
         } as Plan;
 
-        if (isNew) {
-          await onAddPlan(preservedPlan);
-        } else {
-          await onUpdatePlan(preservedPlan);
-        }
+        await onAddPlan(occurrencePlan);
       } else if (applyMode === 'applyDailyUntilDate' || applyMode === 'applyWeeklyUntilWeek') {
+        // Apply to multiple dates
         const targetDate = applyUntilDate ? new Date(applyUntilDate) : nextWeekDate;
         const targetWeekStart = startOfWeek(targetDate, { weekStartsOn: 1 });
         const endDate = addDays(targetWeekStart, getWeekdayIndex(sourceDate));
@@ -349,6 +366,7 @@ export function ScheduleGrid({
           await onUpdatePlan(recurrencePlan);
         }
       } else {
+        // Regular plan (no recurrence)
         const plainPlan = {
           ...updatedSourcePlan,
           appliedFrom: undefined,
@@ -360,6 +378,10 @@ export function ScheduleGrid({
 
         if (isNew) {
           await onAddPlan(plainPlan);
+        } else {
+          await onUpdatePlan(plainPlan);
+        }
+      }
         } else {
           await onUpdatePlan(plainPlan);
         }
