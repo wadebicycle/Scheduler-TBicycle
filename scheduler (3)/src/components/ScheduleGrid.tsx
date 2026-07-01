@@ -382,10 +382,6 @@ export function ScheduleGrid({
           await onUpdatePlan(plainPlan);
         }
       }
-        } else {
-          await onUpdatePlan(plainPlan);
-        }
-      }
 
       if (!isNew && !wasGreen && newColor === 'green') {
         onPlanTurnGreen?.(updatedSourcePlan);
