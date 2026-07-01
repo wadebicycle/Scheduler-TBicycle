@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Plus, Edit2, Trash2, Clock } from 'lucide-react';
 import { translations } from '../lib/i18n';
 import { playMusicalNote } from '../lib/sounds';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,15 @@ export function ScheduleGrid({
   const [newColor, setNewColor] = React.useState<PlanColor>('yellow');
   const [newDuration, setNewDuration] = React.useState(1);
   const [newNotes, setNewNotes] = React.useState('');
+  const [applyTargetDate, setApplyTargetDate] = React.useState('');
+
+  React.useEffect(() => {
+    if (editingPlan) {
+      setApplyTargetDate(format(new Date(editingPlan.date), 'yyyy-MM-dd'));
+    } else {
+      setApplyTargetDate(format(new Date(), 'yyyy-MM-dd'));
+    }
+  }, [editingPlan?.id, editingPlan?.date]);
 
   const daysOfCurrentWeek = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
@@ -187,6 +197,36 @@ export function ScheduleGrid({
       onDeletePlan(editingPlan.id);
       setIsDialogOpen(false);
     }
+  };
+
+  const handleApplyToDate = () => {
+    if (!editingPlan || !applyTargetDate) return;
+
+    const targetDate = new Date(`${applyTargetDate}T12:00:00`);
+    if (isSameDay(targetDate, new Date(editingPlan.date))) {
+      toast.info(t('sameDateSelected'));
+      return;
+    }
+
+    const targetPlan = plans.find((p) => isSameDay(new Date(p.date), targetDate) && p.startHour === editingPlan.startHour);
+    const payload = {
+      ...editingPlan,
+      id: targetPlan?.id || crypto.randomUUID(),
+      title: newTitle,
+      color: newColor,
+      duration: newDuration,
+      notes: newNotes || undefined,
+      date: targetDate.toISOString(),
+      startHour: editingPlan.startHour,
+    } as Plan;
+
+    if (targetPlan) {
+      onUpdatePlan(payload);
+    } else {
+      onAddPlan(payload);
+    }
+
+    toast.success(`${t('appliedToDate')} ${format(targetDate, 'dd/MM/yyyy')}`);
   };
 
   const maxDuration = (hour: number) => Math.min(12, endHour - hour + 1);
@@ -353,6 +393,22 @@ export function ScheduleGrid({
                 rows={2}
                 className="col-span-3 text-xs resize-none bg-muted/50 border-border placeholder:text-muted-foreground"
               />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-3">
+              <Label className="text-right text-xs font-bold text-muted-foreground">
+                {t('applyToDate')}
+              </Label>
+              <div className="col-span-3 flex flex-col gap-2">
+                <input
+                  type="date"
+                  value={applyTargetDate}
+                  onChange={(e) => setApplyTargetDate(e.target.value)}
+                  className="w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={handleApplyToDate} className="w-full justify-center">
+                  {t('applyToDateButton')}
+                </Button>
+              </div>
             </div>
           </div>
           <DialogFooter className="flex justify-between w-full flex-row gap-2">
