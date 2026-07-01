@@ -202,8 +202,9 @@ export function ScheduleGrid({
   const handleApplyToDate = () => {
     if (!editingPlan || !applyTargetDate) return;
 
+    const sourceDate = new Date(editingPlan.date);
     const targetDate = new Date(`${applyTargetDate}T12:00:00`);
-    if (isSameDay(targetDate, new Date(editingPlan.date))) {
+    if (isSameDay(targetDate, sourceDate)) {
       toast.info(t('sameDateSelected'));
       return;
     }
@@ -218,7 +219,12 @@ export function ScheduleGrid({
       notes: newNotes || undefined,
       date: targetDate.toISOString(),
       startHour: editingPlan.startHour,
+      appliedFrom: editingPlan.appliedFrom || editingPlan.date,
+      appliedTo: targetDate.toISOString(),
     } as Plan;
+
+    const originalPlan = { ...editingPlan, appliedTo: targetDate.toISOString() };
+    onUpdatePlan(originalPlan);
 
     if (targetPlan) {
       onUpdatePlan(payload);
@@ -284,6 +290,14 @@ export function ScheduleGrid({
                         </span>
                         {plan.duration > 1 && (
                           <span className="text-[9px] opacity-50">{plan.duration}{t('hours_suffix')}</span>
+                        )}
+                        {plan.appliedFrom && plan.appliedTo && (
+                          <span className="text-[8px] opacity-70 mt-1 block leading-snug">
+                            {t('appliedFromTo', {
+                              from: format(new Date(plan.appliedFrom), 'd/M'),
+                              to: format(new Date(plan.appliedTo), 'd/M'),
+                            })}
+                          </span>
                         )}
                         {plan.notes && (
                           <span className="absolute top-0.5 left-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-40" title={plan.notes} />

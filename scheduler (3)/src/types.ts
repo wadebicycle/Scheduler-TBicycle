@@ -8,6 +8,8 @@ export interface Plan {
   duration: number;
   color: PlanColor;
   notes?: string;
+  appliedFrom?: string;
+  appliedTo?: string;
 }
 
 export interface WeekMetadata {
