@@ -92,7 +92,7 @@ export function ScheduleGrid({
   const [newColor, setNewColor] = React.useState<PlanColor>('yellow');
   const [newDuration, setNewDuration] = React.useState(1);
   const [newNotes, setNewNotes] = React.useState('');
-  const [applyMode, setApplyMode] = React.useState<'none' | 'weekly' | 'nextWeek' | 'repeatUntil' | 'futureWeeks'>('none');
+  const [applyMode, setApplyMode] = React.useState<'none' | 'applyWeekly' | 'applyNextWeek'>('none');
   const [applyUntilDate, setApplyUntilDate] = React.useState('');
   const [editingOccurrenceDate, setEditingOccurrenceDate] = React.useState<string | null>(null);
 
@@ -102,13 +102,15 @@ export function ScheduleGrid({
       const nextWeekDate = addDays(sourceDate, 7);
       const defaultUntil = format(nextWeekDate, 'yyyy-MM-dd');
 
-      if (editingPlan.repeatWeekly) {
-        setApplyMode('weekly');
-      } else if (editingPlan.appliedTo) {
-        const appliedToDate = new Date(editingPlan.appliedTo);
-        setApplyUntilDate(format(appliedToDate, 'yyyy-MM-dd'));
-        const isNextWeek = isSameDay(appliedToDate, nextWeekDate);
-        setApplyMode(isNextWeek ? 'nextWeek' : 'repeatUntil');
+      if (editingPlan.repeatWeekly || editingPlan.appliedTo) {
+        const startsNextWeek = editingPlan.appliedFrom && isSameDay(new Date(editingPlan.appliedFrom), nextWeekDate);
+        setApplyMode(startsNextWeek ? 'applyNextWeek' : 'applyWeekly');
+        const derivedUntilDate = editingPlan.applyUntilDate
+          ? editingPlan.applyUntilDate
+          : editingPlan.appliedTo
+            ? format(new Date(editingPlan.appliedTo), 'yyyy-MM-dd')
+            : defaultUntil;
+        setApplyUntilDate(derivedUntilDate);
       } else {
         setApplyMode('none');
         setApplyUntilDate(defaultUntil);
@@ -117,7 +119,7 @@ export function ScheduleGrid({
       setApplyMode('none');
       setApplyUntilDate('');
     }
-  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatWeekly, editingPlan?.appliedTo]);
+  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatWeekly, editingPlan?.appliedFrom, editingPlan?.appliedTo, editingPlan?.applyUntilDate]);
 
   const daysOfCurrentWeek = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
@@ -264,77 +266,23 @@ export function ScheduleGrid({
     const isNew = !plans.some(p => p.id === updatedSourcePlan.id);
 
     try {
-      if (applyMode === 'weekly') {
-        const weeklyPlan = {
-          ...updatedSourcePlan,
-          repeatWeekly: true,
-          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
-          appliedTo: undefined,
-        } as Plan;
-
-        if (isNew) {
-          await onAddPlan(weeklyPlan);
-        } else {
-          await onUpdatePlan(weeklyPlan);
-        }
-      } else if (applyMode === 'futureWeeks') {
-        const weeklyPlan = {
-          ...updatedSourcePlan,
-          repeatWeekly: true,
-          appliedFrom: nextWeekDate.toISOString(),
-          appliedTo: undefined,
-        } as Plan;
-
-        if (isNew) {
-          await onAddPlan(weeklyPlan);
-        } else {
-          await onUpdatePlan(weeklyPlan);
-        }
-      } else if (applyMode === 'repeatUntil') {
+      if (applyMode === 'applyWeekly' || applyMode === 'applyNextWeek') {
         const targetDate = applyUntilDate ? new Date(applyUntilDate) : nextWeekDate;
         const targetWeekStart = startOfWeek(targetDate, { weekStartsOn: 1 });
         const endDate = addDays(targetWeekStart, getWeekdayIndex(sourceDate));
 
-        const repeatUntilPlan = {
+        const recurrencePlan = {
           ...updatedSourcePlan,
-          repeatWeekly: false,
-          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
+          repeatWeekly: true,
+          appliedFrom: applyMode === 'applyNextWeek' ? nextWeekDate.toISOString() : updatedSourcePlan.date,
           appliedTo: endDate.toISOString(),
+          applyUntilDate: applyUntilDate || format(targetDate, 'yyyy-MM-dd'),
         } as Plan;
 
         if (isNew) {
-          await onAddPlan(repeatUntilPlan);
+          await onAddPlan(recurrencePlan);
         } else {
-          await onUpdatePlan(repeatUntilPlan);
-        }
-      } else if (applyMode === 'nextWeek') {
-        const nextWeekPlan = plans.find((p) => isSameDay(new Date(p.date), nextWeekDate) && p.startHour === editingPlan.startHour);
-        const targetPlan = {
-          ...buildUpdatedPlan(editingPlan),
-          id: nextWeekPlan?.id || crypto.randomUUID(),
-          date: nextWeekDate.toISOString(),
-          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
-          appliedTo: nextWeekDate.toISOString(),
-          repeatWeekly: false,
-        } as Plan;
-
-        const updatedOriginalPlan = {
-          ...updatedSourcePlan,
-          appliedFrom: updatedSourcePlan.appliedFrom || updatedSourcePlan.date,
-          appliedTo: nextWeekDate.toISOString(),
-          repeatWeekly: false,
-        } as Plan;
-
-        if (isNew) {
-          await onAddPlan(updatedOriginalPlan);
-        } else {
-          await onUpdatePlan(updatedOriginalPlan);
-        }
-
-        if (nextWeekPlan) {
-          await onUpdatePlan(targetPlan);
-        } else {
-          await onAddPlan(targetPlan);
+          await onUpdatePlan(recurrencePlan);
         }
       } else {
         const plainPlan = {
@@ -342,6 +290,7 @@ export function ScheduleGrid({
           appliedFrom: undefined,
           appliedTo: undefined,
           repeatWeekly: false,
+          applyUntilDate: undefined,
         } as Plan;
 
         if (isNew) {
@@ -549,9 +498,9 @@ export function ScheduleGrid({
                   <input
                     type="radio"
                     name="applyMode"
-                    value="weekly"
-                    checked={applyMode === 'weekly'}
-                    onChange={() => setApplyMode('weekly')}
+                    value="applyWeekly"
+                    checked={applyMode === 'applyWeekly'}
+                    onChange={() => setApplyMode('applyWeekly')}
                   />
                   <span className="text-xs">{t('applyWeekly')}</span>
                 </label>
@@ -559,35 +508,15 @@ export function ScheduleGrid({
                   <input
                     type="radio"
                     name="applyMode"
-                    value="nextWeek"
-                    checked={applyMode === 'nextWeek'}
-                    onChange={() => setApplyMode('nextWeek')}
+                    value="applyNextWeek"
+                    checked={applyMode === 'applyNextWeek'}
+                    onChange={() => setApplyMode('applyNextWeek')}
                   />
                   <span className="text-xs">{t('applyNextWeek')}</span>
                 </label>
-                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="applyMode"
-                    value="repeatUntil"
-                    checked={applyMode === 'repeatUntil'}
-                    onChange={() => setApplyMode('repeatUntil')}
-                  />
-                  <span className="text-xs">{t('applyUntilWeek')}</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="applyMode"
-                    value="futureWeeks"
-                    checked={applyMode === 'futureWeeks'}
-                    onChange={() => setApplyMode('futureWeeks')}
-                  />
-                  <span className="text-xs">{t('applyFutureWeeks')}</span>
-                </label>
               </div>
             </div>
-            {applyMode === 'repeatUntil' && (
+            {applyMode !== 'none' && (
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
                 <Label htmlFor="apply-until-date" className="text-xs font-bold text-muted-foreground sm:text-right">
                   {t('applyUntil')}

@@ -10,6 +10,7 @@ export interface Plan {
   notes?: string;
   appliedFrom?: string;
   appliedTo?: string;
+  applyUntilDate?: string;
   repeatWeekly?: boolean;
   sourcePlanId?: string;
 }
