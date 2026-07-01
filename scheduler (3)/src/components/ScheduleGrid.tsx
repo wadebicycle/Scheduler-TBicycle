@@ -458,7 +458,7 @@ export function ScheduleGrid({
       </table>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:rounded-2xl border-none max-w-sm bg-card">
+        <DialogContent className="sm:rounded-2xl border-none max-w-sm w-full bg-card max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground">
               {plans.some(p => p.id === editingPlan?.id) ? t('editPlan') : t('addPlan')}
@@ -468,25 +468,25 @@ export function ScheduleGrid({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
-            <div className="grid grid-cols-4 items-center gap-3">
-              <Label htmlFor="title" className="text-right text-xs font-bold text-muted-foreground">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
+              <Label htmlFor="title" className="text-xs font-bold text-muted-foreground sm:text-right">
                 {t('title')}
               </Label>
               <Input
                 id="title"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                className="col-span-3 font-semibold bg-muted/50 border-border"
+                className="sm:col-span-3 font-semibold bg-muted/50 border-border"
                 placeholder={t('enterTask')}
                 autoFocus
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-3">
-              <Label className="text-right text-xs font-bold text-muted-foreground">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
+              <Label className="text-xs font-bold text-muted-foreground sm:text-right">
                 {t('duration')}
               </Label>
-              <div className="col-span-3 flex items-center gap-2">
+              <div className="sm:col-span-3 flex flex-col sm:flex-row sm:items-center gap-2">
                 <Select
                   value={String(newDuration)}
                   onValueChange={(v) => setNewDuration(Number(v))}
@@ -505,11 +505,11 @@ export function ScheduleGrid({
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-3">
-              <Label className="text-right text-xs font-bold text-muted-foreground">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
+              <Label className="text-xs font-bold text-muted-foreground sm:text-right">
                 {t('color')}
               </Label>
-              <div className="col-span-3 flex gap-2 flex-wrap">
+              <div className="sm:col-span-3 flex gap-2 flex-wrap">
                 {(Object.keys(COLOR_MAP) as PlanColor[]).map(color => (
                   <button
                     key={color}
@@ -528,8 +528,8 @@ export function ScheduleGrid({
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-4 items-start gap-3">
-              <Label className="text-right text-xs font-bold pt-2 text-muted-foreground">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
+              <Label className="text-xs font-bold pt-2 text-muted-foreground sm:text-right">
                 {t('notes')}
               </Label>
               <Textarea
@@ -537,14 +537,14 @@ export function ScheduleGrid({
                 onChange={(e) => setNewNotes(e.target.value)}
                 placeholder={t('notesPlaceholder')}
                 rows={2}
-                className="col-span-3 text-xs resize-none bg-muted/50 border-border placeholder:text-muted-foreground"
+                className="sm:col-span-3 text-xs resize-none bg-muted/50 border-border placeholder:text-muted-foreground"
               />
             </div>
-            <div className="grid grid-cols-4 items-start gap-3">
-              <Label className="text-right text-xs font-bold text-muted-foreground">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
+              <Label className="text-xs font-bold text-muted-foreground sm:text-right">
                 {t('applyMode')}
               </Label>
-              <div className="col-span-3 space-y-2">
+              <div className="sm:col-span-3 space-y-2">
                 <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
                   <input
                     type="radio"
@@ -588,15 +588,16 @@ export function ScheduleGrid({
               </div>
             </div>
             {applyMode === 'repeatUntil' && (
-              <div className="grid grid-cols-4 items-center gap-3">
-                <Label className="text-right text-xs font-bold text-muted-foreground">
+              <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
+                <Label htmlFor="apply-until-date" className="text-xs font-bold text-muted-foreground sm:text-right">
                   {t('applyUntil')}
                 </Label>
                 <Input
+                  id="apply-until-date"
                   type="date"
                   value={applyUntilDate}
                   onChange={(e) => setApplyUntilDate(e.target.value)}
-                  className="col-span-3 bg-muted/50 border-border"
+                  className="sm:col-span-3 w-full bg-muted/50 border-border"
                 />
               </div>
             )}
