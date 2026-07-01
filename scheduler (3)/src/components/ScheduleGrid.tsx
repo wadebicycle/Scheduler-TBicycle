@@ -97,31 +97,38 @@ export function ScheduleGrid({
   const [editingOccurrenceDate, setEditingOccurrenceDate] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (editingPlan) {
-      const sourceDate = new Date(editingPlan.date);
-      const nextWeekDate = addDays(sourceDate, 7);
-      const defaultUntil = format(nextWeekDate, 'yyyy-MM-dd');
-
-      if (editingPlan.repeatDaily) {
-        setApplyMode('applyDailyUntilDate');
-        setApplyUntilDate(editingPlan.applyUntilDate || format(new Date(editingPlan.appliedTo || defaultUntil), 'yyyy-MM-dd'));
-      } else if (editingPlan.repeatWeekly || editingPlan.appliedTo) {
-        setApplyMode('applyWeeklyUntilWeek');
-        const derivedUntilDate = editingPlan.applyUntilDate
-          ? editingPlan.applyUntilDate
-          : editingPlan.appliedTo
-            ? format(new Date(editingPlan.appliedTo), 'yyyy-MM-dd')
-            : defaultUntil;
-        setApplyUntilDate(derivedUntilDate);
-      } else {
-        setApplyMode('none');
-        setApplyUntilDate(defaultUntil);
-      }
-    } else {
+    if (!editingPlan) {
       setApplyMode('none');
       setApplyUntilDate('');
+      return;
     }
-  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatDaily, editingPlan?.repeatWeekly, editingPlan?.appliedFrom, editingPlan?.appliedTo, editingPlan?.applyUntilDate]);
+
+    if (editingOccurrenceDate !== null) {
+      setApplyMode('none');
+      setApplyUntilDate('');
+      return;
+    }
+
+    const sourceDate = new Date(editingPlan.date);
+    const nextWeekDate = addDays(sourceDate, 7);
+    const defaultUntil = format(nextWeekDate, 'yyyy-MM-dd');
+
+    if (editingPlan.repeatDaily) {
+      setApplyMode('applyDailyUntilDate');
+      setApplyUntilDate(editingPlan.applyUntilDate || format(new Date(editingPlan.appliedTo || defaultUntil), 'yyyy-MM-dd'));
+    } else if (editingPlan.repeatWeekly || editingPlan.appliedTo) {
+      setApplyMode('applyWeeklyUntilWeek');
+      const derivedUntilDate = editingPlan.applyUntilDate
+        ? editingPlan.applyUntilDate
+        : editingPlan.appliedTo
+          ? format(new Date(editingPlan.appliedTo), 'yyyy-MM-dd')
+          : defaultUntil;
+      setApplyUntilDate(derivedUntilDate);
+    } else {
+      setApplyMode('none');
+      setApplyUntilDate(defaultUntil);
+    }
+  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatDaily, editingPlan?.repeatWeekly, editingPlan?.appliedFrom, editingPlan?.appliedTo, editingPlan?.applyUntilDate, editingOccurrenceDate]);
 
   const daysOfCurrentWeek = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
@@ -196,11 +203,9 @@ export function ScheduleGrid({
         });
       }
 
-      if (isSameWeek(planDate, currentWeekStart, { weekStartsOn: 1 })) {
-        return [plan];
-      }
+      const isRecurring = plan.repeatWeekly || plan.appliedFrom || plan.appliedTo;
 
-      if ((plan.repeatWeekly || plan.appliedFrom || plan.appliedTo) && isRecurringPlanActiveForWeek(plan, currentWeekStart)) {
+      if (isRecurring && isRecurringPlanActiveForWeek(plan, currentWeekStart)) {
         const occurrenceDate = getOccurrenceDateForWeek(planDate, currentWeekStart);
         const explicitDuplicate = plans.some((otherPlan) =>
           otherPlan.id !== plan.id &&
@@ -211,6 +216,10 @@ export function ScheduleGrid({
           return [];
         }
         return [{ ...plan, date: occurrenceDate.toISOString(), sourcePlanId: plan.id }];
+      }
+
+      if (isSameWeek(planDate, currentWeekStart, { weekStartsOn: 1 })) {
+        return [plan];
       }
 
       return [];
@@ -602,45 +611,58 @@ export function ScheduleGrid({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
-              <Label className="text-xs font-bold text-muted-foreground sm:text-right">
-                {t('applyMode')}
-              </Label>
-              <div className="sm:col-span-3 space-y-2">
-                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="applyMode"
-                    value="applyDailyUntilDate"
-                    checked={applyMode === 'applyDailyUntilDate'}
-                    onChange={() => setApplyMode('applyDailyUntilDate')}
-                  />
-                  <span className="text-xs">{t('applyDailyUntilDate')}</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="applyMode"
-                    value="applyWeeklyUntilWeek"
-                    checked={applyMode === 'applyWeeklyUntilWeek'}
-                    onChange={() => setApplyMode('applyWeeklyUntilWeek')}
-                  />
-                  <span className="text-xs">{t('applyWeeklyUntilWeek')}</span>
-                </label>
-              </div>
-            </div>
-            {applyMode !== 'none' && (
-              <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
-                <Label htmlFor="apply-until-date" className="text-xs font-bold text-muted-foreground sm:text-right">
-                  {t('applyUntil')}
+            {editingOccurrenceDate === null ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
+                  <Label className="text-xs font-bold text-muted-foreground sm:text-right">
+                    {t('applyMode')}
+                  </Label>
+                  <div className="sm:col-span-3 space-y-2">
+                    <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="applyMode"
+                        value="applyDailyUntilDate"
+                        checked={applyMode === 'applyDailyUntilDate'}
+                        onChange={() => setApplyMode('applyDailyUntilDate')}
+                      />
+                      <span className="text-xs">{t('applyDailyUntilDate')}</span>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="applyMode"
+                        value="applyWeeklyUntilWeek"
+                        checked={applyMode === 'applyWeeklyUntilWeek'}
+                        onChange={() => setApplyMode('applyWeeklyUntilWeek')}
+                      />
+                      <span className="text-xs">{t('applyWeeklyUntilWeek')}</span>
+                    </label>
+                  </div>
+                </div>
+                {applyMode !== 'none' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-3">
+                    <Label htmlFor="apply-until-date" className="text-xs font-bold text-muted-foreground sm:text-right">
+                      {t('applyUntil')}
+                    </Label>
+                    <Input
+                      id="apply-until-date"
+                      type="date"
+                      value={applyUntilDate}
+                      onChange={(e) => setApplyUntilDate(e.target.value)}
+                      className="sm:col-span-3 w-full bg-muted/50 border-border"
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
+                <Label className="text-xs font-bold text-muted-foreground sm:text-right">
+                  {t('applyMode')}
                 </Label>
-                <Input
-                  id="apply-until-date"
-                  type="date"
-                  value={applyUntilDate}
-                  onChange={(e) => setApplyUntilDate(e.target.value)}
-                  className="sm:col-span-3 w-full bg-muted/50 border-border"
-                />
+                <div className="sm:col-span-3 text-xs text-muted-foreground">
+                  {t('occurrenceEditMode')}
+                </div>
               </div>
             )}
           </div>
