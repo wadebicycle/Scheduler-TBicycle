@@ -307,9 +307,27 @@ export function ScheduleGrid({
     const updatedSourcePlan = buildUpdatedPlan(editingPlan);
     const wasGreen = plans.find(p => p.id === editingPlan.id)?.color === 'green';
     const isNew = !plans.some(p => p.id === updatedSourcePlan.id);
+    const isEditingOccurrence = editingOccurrenceDate !== null;
 
     try {
-      if (applyMode === 'applyDailyUntilDate' || applyMode === 'applyWeeklyUntilWeek') {
+      // If editing an occurrence of a recurring plan, preserve recurrence properties
+      if (isEditingOccurrence && editingPlan.repeatDaily || editingPlan.repeatWeekly) {
+        // Update the source plan, keeping recurrence intact
+        const preservedPlan = {
+          ...updatedSourcePlan,
+          repeatDaily: editingPlan.repeatDaily,
+          repeatWeekly: editingPlan.repeatWeekly,
+          appliedFrom: editingPlan.appliedFrom,
+          appliedTo: editingPlan.appliedTo,
+          applyUntilDate: editingPlan.applyUntilDate,
+        } as Plan;
+
+        if (isNew) {
+          await onAddPlan(preservedPlan);
+        } else {
+          await onUpdatePlan(preservedPlan);
+        }
+      } else if (applyMode === 'applyDailyUntilDate' || applyMode === 'applyWeeklyUntilWeek') {
         const targetDate = applyUntilDate ? new Date(applyUntilDate) : nextWeekDate;
         const targetWeekStart = startOfWeek(targetDate, { weekStartsOn: 1 });
         const endDate = addDays(targetWeekStart, getWeekdayIndex(sourceDate));
@@ -360,10 +378,34 @@ export function ScheduleGrid({
   };
 
   const handleDelete = () => {
-    if (editingPlan) {
+    if (!editingPlan) return;
+    
+    const isEditingOccurrence = editingOccurrenceDate !== null;
+    const isRecurringPlan = editingPlan.repeatDaily || editingPlan.repeatWeekly;
+
+    // If deleting an occurrence of a recurring plan, ask for confirmation
+    if (isEditingOccurrence && isRecurringPlan) {
+      const deleteEntireSeries = confirm('Delete entire recurring series?\n\nOK = Delete entire series\nCancel = Delete only this occurrence');
+      
+      if (deleteEntireSeries) {
+        // Delete entire series
+        onDeletePlan(editingPlan.id);
+      } else {
+        // Delete only this occurrence by shortening the series
+        const occurrenceDate = new Date(editingOccurrenceDate);
+        const dayBefore = addDays(occurrenceDate, -1);
+        const updatedPlan = {
+          ...editingPlan,
+          appliedTo: dayBefore.toISOString(),
+        };
+        onUpdatePlan(updatedPlan);
+      }
+    } else {
+      // Regular plan deletion
       onDeletePlan(editingPlan.id);
-      setIsDialogOpen(false);
     }
+
+    setIsDialogOpen(false);
   };
 
   const maxDuration = (hour: number) => Math.min(12, endHour - hour + 1);
