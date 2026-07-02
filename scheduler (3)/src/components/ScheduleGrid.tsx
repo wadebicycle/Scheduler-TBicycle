@@ -97,15 +97,38 @@ export function ScheduleGrid({
   const [editingOccurrenceDate, setEditingOccurrenceDate] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!editingPlan || editingOccurrenceDate !== null) {
+    if (!editingPlan) {
       setApplyMode('none');
       setApplyUntilDate('');
       return;
     }
 
-    setApplyMode('none');
-    setApplyUntilDate('');
-  }, [editingPlan?.id, editingPlan?.date, editingOccurrenceDate]);
+    // If editing an occurrence of a recurring plan, always set to none
+    if (editingOccurrenceDate !== null) {
+      setApplyMode('none');
+      setApplyUntilDate('');
+      return;
+    }
+
+    // For existing recurring plans, detect and restore the apply mode
+    const isExistingPlan = plans.some(p => p.id === editingPlan.id);
+    if (isExistingPlan) {
+      if (editingPlan.repeatDaily) {
+        setApplyMode('applyDailyUntilDate');
+        setApplyUntilDate(editingPlan.applyUntilDate || format(new Date(editingPlan.appliedTo || new Date()), 'yyyy-MM-dd'));
+      } else if (editingPlan.repeatWeekly) {
+        setApplyMode('applyWeeklyUntilWeek');
+        setApplyUntilDate(editingPlan.applyUntilDate || format(new Date(editingPlan.appliedTo || new Date()), 'yyyy-MM-dd'));
+      } else {
+        setApplyMode('none');
+        setApplyUntilDate('');
+      }
+    } else {
+      // New plan: default to one-time task
+      setApplyMode('none');
+      setApplyUntilDate('');
+    }
+  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatDaily, editingPlan?.repeatWeekly, editingPlan?.appliedFrom, editingPlan?.appliedTo, editingPlan?.applyUntilDate, editingOccurrenceDate, plans]);
 
   const daysOfCurrentWeek = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
