@@ -97,38 +97,15 @@ export function ScheduleGrid({
   const [editingOccurrenceDate, setEditingOccurrenceDate] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!editingPlan) {
+    if (!editingPlan || editingOccurrenceDate !== null) {
       setApplyMode('none');
       setApplyUntilDate('');
       return;
     }
 
-    if (editingOccurrenceDate !== null) {
-      setApplyMode('none');
-      setApplyUntilDate('');
-      return;
-    }
-
-    const sourceDate = new Date(editingPlan.date);
-    const nextWeekDate = addDays(sourceDate, 7);
-    const defaultUntil = format(nextWeekDate, 'yyyy-MM-dd');
-
-    if (editingPlan.repeatDaily) {
-      setApplyMode('applyDailyUntilDate');
-      setApplyUntilDate(editingPlan.applyUntilDate || format(new Date(editingPlan.appliedTo || defaultUntil), 'yyyy-MM-dd'));
-    } else if (editingPlan.repeatWeekly || editingPlan.appliedTo) {
-      setApplyMode('applyWeeklyUntilWeek');
-      const derivedUntilDate = editingPlan.applyUntilDate
-        ? editingPlan.applyUntilDate
-        : editingPlan.appliedTo
-          ? format(new Date(editingPlan.appliedTo), 'yyyy-MM-dd')
-          : defaultUntil;
-      setApplyUntilDate(derivedUntilDate);
-    } else {
-      setApplyMode('none');
-      setApplyUntilDate(defaultUntil);
-    }
-  }, [editingPlan?.id, editingPlan?.date, editingPlan?.repeatDaily, editingPlan?.repeatWeekly, editingPlan?.appliedFrom, editingPlan?.appliedTo, editingPlan?.applyUntilDate, editingOccurrenceDate]);
+    setApplyMode('none');
+    setApplyUntilDate('');
+  }, [editingPlan?.id, editingPlan?.date, editingOccurrenceDate]);
 
   const daysOfCurrentWeek = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
@@ -618,6 +595,19 @@ export function ScheduleGrid({
                     {t('applyMode')}
                   </Label>
                   <div className="sm:col-span-3 space-y-2">
+                    <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="applyMode"
+                        value="none"
+                        checked={applyMode === 'none'}
+                        onChange={() => {
+                          setApplyMode('none');
+                          setApplyUntilDate('');
+                        }}
+                      />
+                      <span className="text-xs">{t('singleTask')}</span>
+                    </label>
                     <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 cursor-pointer">
                       <input
                         type="radio"
