@@ -1079,7 +1079,10 @@ export default function App() {
                 const key = format(ws, 'yyyy-MM-dd');
                 const meta = weekMetas[key] || {};
                 const colorValue = meta.color || 'bg-muted dark:bg-muted';
-                
+                const activeButtonStyle = meta.color
+                  ? cn(colorValue, 'text-black shadow-lg scale-105')
+                  : 'bg-[#107C41] text-white shadow-lg scale-105 border-[#107C41]';
+
                 return (
                   <React.Fragment key={i}>
                     <Popover>
@@ -1089,7 +1092,7 @@ export default function App() {
                           className={cn(
                             "px-4 py-1.5 text-[11px] font-bold rounded-xl whitespace-nowrap transition-all border shrink-0",
                             isActive 
-                              ? "bg-[#107C41] text-white shadow-lg scale-105 border-[#107C41]" 
+                              ? activeButtonStyle
                               : cn("text-muted-foreground border-border hover:border-primary/30", colorValue)
                           )}
                           onClick={() => setSelectedWeekStart(ws)}
