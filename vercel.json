@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd 'scheduler (3)' && npm install && npm run build",
-  "outputDirectory": "scheduler (3)/dist",
+  "buildCommand": "npm --prefix \"scheduler (3)\" install && npm --prefix \"scheduler (3)\" run build && cp -a \"scheduler (3)/dist\" ./dist",
+  "outputDirectory": "dist",
   "framework": "vite"
 }
