@@ -1,2 +1,6 @@
-Last updated: 2026-07-01 09:05:00 UTC
-All fixes are ready and committed to main branch.
+Last updated: 2026-07-02 12:00:00 UTC
+Apply mode fix deployed. Changes:
+- Default to "one-time task" for new plans
+- Preserve existing recurrence state when editing
+- Allow switching recurring tasks back to one-time
+- Commit: 4e08477b (fix: correct apply mode behavior)
